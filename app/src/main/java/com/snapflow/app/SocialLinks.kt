@@ -1,6 +1,6 @@
 package com.snapflow.app
 
-import android.net.Uri
+import java.net.URI
 
 /**
  * Extrai somente URLs HTTPS válidas do texto copiado/compartilhado.
@@ -21,7 +21,7 @@ object SocialLinks {
             val candidateUrl = candidate.value
                 .replace("&amp;", "&")
                 .trimEnd('.', ',', ';', '!', '?', ')', ']', '}', '»', '”')
-            val uri = try { Uri.parse(candidateUrl) } catch (_: Exception) { continue }
+            val uri = try { URI(candidateUrl) } catch (_: Exception) { continue }
             val hostname = uri.host?.lowercase()?.removeSuffix(".").orEmpty()
             if (hostname.isEmpty() || uri.scheme !in listOf("https", "http")) continue
             val platform = when {
@@ -36,7 +36,7 @@ object SocialLinks {
                 else -> Platform.OTHER
             }
             // Todos os acessos gerados pela aplicação precisam ser HTTPS.
-            val normalized = uri.buildUpon().scheme("https").build().toString()
+            val normalized = candidateUrl.replaceFirst(Regex("^http://", RegexOption.IGNORE_CASE), "https://")
             val path = uri.path.orEmpty().lowercase()
             val video = when (platform) {
                 Platform.YOUTUBE -> hostname.endsWith("youtu.be") ||
