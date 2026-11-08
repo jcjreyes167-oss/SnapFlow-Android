@@ -2,6 +2,9 @@ package com.snapflow.app
 
 import android.Manifest
 import android.app.DownloadManager
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
+import android.graphics.drawable.Icon
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -35,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,9 +65,11 @@ private val Good = Color(0xFF8BE5C0)
 
 class MainActivity : ComponentActivity() {
     var incomingLink by mutableStateOf("")
+    var shortcutRoute by mutableStateOf("")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         parseShare(intent)
+        handleShortcut(intent)
         window.statusBarColor = android.graphics.Color.rgb(10, 16, 25)
         window.navigationBarColor = android.graphics.Color.rgb(16, 26, 38)
         setContent { SnapFlowApp(this) }
@@ -72,6 +78,18 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         parseShare(intent)
+        handleShortcut(intent)
+    }
+    private fun handleShortcut(intent: Intent?) {
+        when (intent?.action) {
+            "com.snapflow.app.action.PASTE_LINK" -> {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val raw = clipboard.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+                incomingLink = Regex("https://[^\\s]+", RegexOption.IGNORE_CASE).find(raw)?.value.orEmpty()
+                shortcutRoute = "paste:" + System.nanoTime()
+            }
+            "com.snapflow.app.action.DOWNLOADS" -> shortcutRoute = "downloads:" + System.nanoTime()
+        }
     }
     private fun parseShare(intent: Intent?) {
         val raw = if (intent?.action == Intent.ACTION_SEND) {
@@ -159,6 +177,16 @@ private fun SnapFlowApp(activity: MainActivity) {
     }
     DisposableEffect(web) {
         onDispose { web.stopLoading(); web.destroy() }
+    }
+    LaunchedEffect(activity.shortcutRoute) {
+        if (activity.shortcutRoute.startsWith("downloads:")) tab = 2
+        if (activity.shortcutRoute.startsWith("paste:")) {
+            tab = 0
+            if (activity.incomingLink.isNotEmpty()) {
+                source = activity.incomingLink
+                analysis = null
+            }
+        }
     }
     LaunchedEffect(activity.incomingLink) {
         if (activity.incomingLink.isNotBlank()) {
@@ -280,10 +308,11 @@ private fun SnapFlowApp(activity: MainActivity) {
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(Modifier.size(39.dp).clip(RoundedCornerShape(12.dp)).background(Accent),
-                        contentAlignment = Alignment.Center) {
-                        Text("▶", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Black)
-                    }
+                    androidx.compose.foundation.Image(
+                        painter = painterResource(id = R.drawable.ic_app),
+                        contentDescription = null,
+                        modifier = Modifier.size(42.dp)
+                    )
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text("SnapFlow", fontSize = 23.sp, fontWeight = FontWeight.ExtraBold, color = Light)
@@ -309,7 +338,20 @@ private fun SnapFlowApp(activity: MainActivity) {
                             } else helper("A área de transferência está vazia")
                         },
                         onBrowser = { browserAddress = source.ifBlank { browserAddress }; goBrowser(browserAddress); tab = 1 },
-                        onFiles = { tab = 2 }
+                        onFiles = { tab = 2 },
+                        onPin = {
+                            val manager = context.getSystemService(ShortcutManager::class.java)
+                            if (manager?.isRequestPinShortcutSupported == true) {
+                                val shortcut = ShortcutInfo.Builder(context, "snapflow_home")
+                                    .setShortLabel("SnapFlow")
+                                    .setLongLabel("Abrir SnapFlow")
+                                    .setIcon(Icon.createWithResource(context, R.mipmap.ic_launcher))
+                                    .setIntent(Intent(context, MainActivity::class.java).setAction(Intent.ACTION_MAIN))
+                                    .build()
+                                manager.requestPinShortcut(shortcut, null)
+                                helper("Confirme a criação do atalho na tela inicial.")
+                            } else helper("Adicione o SnapFlow à tela inicial pelo menu de aplicativos.")
+                        }
                     )
                     1 -> BrowserScreen(
                         web = web, address = browserAddress,
@@ -380,7 +422,7 @@ private fun HomeScreen(
     audio: Boolean, onAudio: (Boolean) -> Unit,
     quality: String, onQuality: (String) -> Unit,
     onAnalyze: () -> Unit, onDownload: () -> Unit,
-    onPaste: () -> Unit, onBrowser: () -> Unit, onFiles: () -> Unit
+    onPaste: () -> Unit, onBrowser: () -> Unit, onFiles: () -> Unit, onPin: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -488,6 +530,7 @@ private fun HomeScreen(
             }
         }
         item {
+            TextButton(onClick = onPin) { Text("⌂  Adicionar atalho à tela inicial", color = Accent) }
             Text("Baixe apenas conteúdo próprio ou autorizado. A compatibilidade depende do site; mídias com DRM não são suportadas.",
                 color = Muted, fontSize = 11.sp, lineHeight = 16.sp, modifier = Modifier.padding(bottom = 16.dp))
         }

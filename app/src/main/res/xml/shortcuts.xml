@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="snapflow_paste" android:enabled="true"
+        android:icon="@drawable/ic_shortcut_paste"
+        android:shortcutShortLabel="@string/shortcut_paste"
+        android:shortcutLongLabel="@string/shortcut_paste_long">
+        <intent android:action="com.snapflow.app.action.PASTE_LINK"
+            android:targetPackage="com.snapflow.app"
+            android:targetClass="com.snapflow.app.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="snapflow_downloads" android:enabled="true"
+        android:icon="@drawable/ic_shortcut_downloads"
+        android:shortcutShortLabel="@string/shortcut_downloads"
+        android:shortcutLongLabel="@string/shortcut_downloads_long">
+        <intent android:action="com.snapflow.app.action.DOWNLOADS"
+            android:targetPackage="com.snapflow.app"
+            android:targetClass="com.snapflow.app.MainActivity" />
+    </shortcut>
+</shortcuts>

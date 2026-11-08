@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">SnapFlow</string>
+    <string name="shortcut_paste">Colar link</string>
+    <string name="shortcut_paste_long">Colar link de mídia no SnapFlow</string>
+    <string name="shortcut_downloads">Downloads</string>
+    <string name="shortcut_downloads_long">Abrir meus downloads</string>
+</resources>
