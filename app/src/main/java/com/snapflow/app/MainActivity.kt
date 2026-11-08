@@ -289,7 +289,7 @@ private fun SnapFlowApp(activity: MainActivity) {
                         Text("SnapFlow", fontSize = 23.sp, fontWeight = FontWeight.ExtraBold, color = Light)
                         Text("Vídeos e áudio, sem complicação", fontSize = 11.sp, color = Muted)
                     }
-                    Text("v3.0", fontSize = 11.sp, color = Muted)
+                    Text("v3.1", fontSize = 11.sp, color = Muted)
                 }
                 when (tab) {
                     0 -> HomeScreen(
