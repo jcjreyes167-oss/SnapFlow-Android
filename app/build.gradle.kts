@@ -12,7 +12,14 @@ android {
         targetSdk = 35
         versionCode = 4
         versionName = "3.0"
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        ndk {
+            if (project.hasProperty("emulatorTest")) {
+                abiFilters += "x86_64"
+            } else {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
+        }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -22,6 +29,7 @@ android {
     buildFeatures { compose = true }
     packaging {
         resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/NOTICE", "META-INF/LICENSE")
+        jniLibs.useLegacyPackaging = true
     }
 }
 dependencies {
@@ -36,4 +44,7 @@ dependencies {
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:core:1.6.1")
 }
