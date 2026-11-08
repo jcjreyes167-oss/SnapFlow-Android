@@ -1,4 +1,4 @@
-# SnapFlow Android 3.2
+# SnapFlow Android 3.3
 
 Aplicativo Android em Kotlin/Jetpack Compose para arquivos de mídia autorizados.
 
@@ -26,3 +26,10 @@ GPL-3.0, consulte LICENSE e THIRD_PARTY_NOTICES.md.
 - Mensagens claras para HTTP 403, 404 e 429; nova tentativa para downloads que falharam.
 - Tela Downloads simplificada: menos espaço em branco, progresso apenas quando há transferência.
 - Atualização do motor não libera arquivos bloqueados pelo provedor; respeitar termos e direitos.
+
+## Versão 3.3 — links sociais
+- Reconhecimento de vídeos e URLs compartilhadas do YouTube (Shorts), TikTok (incluindo links curtos), Facebook (Reels/watch) e Instagram (Reels/postagens).
+- Validação e normalização de URLs HTTPS antes de analisar ou baixar.
+- Extratores oficiais do yt-dlp; compatibilidade é verificada pela plataforma para cada URL.
+- Erros claros quando a fonte não disponibiliza o vídeo; sem contorno de DRM, login ou restrições de acesso.
+- Testes automatizados do reconhecimento de URLs.

@@ -85,7 +85,7 @@ class MainActivity : ComponentActivity() {
             "com.snapflow.app.action.PASTE_LINK" -> {
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val raw = clipboard.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
-                incomingLink = Regex("https://[^\\s]+", RegexOption.IGNORE_CASE).find(raw)?.value.orEmpty()
+                incomingLink = SocialLinks.find(raw)?.url.orEmpty()
                 shortcutRoute = "paste:" + System.nanoTime()
             }
             "com.snapflow.app.action.DOWNLOADS" -> shortcutRoute = "downloads:" + System.nanoTime()
@@ -95,8 +95,7 @@ class MainActivity : ComponentActivity() {
         val raw = if (intent?.action == Intent.ACTION_SEND) {
             intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
         } else intent?.dataString.orEmpty()
-        val url = Regex("https://[^\\s]+", RegexOption.IGNORE_CASE).find(raw)?.value
-            ?.trimEnd('.', ',', ')', ']') ?: ""
+        val url = SocialLinks.find(raw)?.url.orEmpty()
         if (url.isNotEmpty()) incomingLink = url
     }
 }
@@ -212,11 +211,17 @@ private fun SnapFlowApp(activity: MainActivity) {
         }
     }
     fun analyzeUrl(value: String) {
-        val link = value.trim()
-        if (!link.startsWith("https://", true)) {
-            error = "Cole um link que comece com https://"
+        val parsed = SocialLinks.find(value)
+        if (parsed == null) {
+            error = "Cole um link válido de YouTube, TikTok, Facebook, Instagram ou arquivo HTTPS."
             return
         }
+        if (!parsed.looksLikeVideo && parsed.platform != SocialLinks.Platform.OTHER) {
+            error = "O link parece ser de perfil ou página, não de vídeo. Use Compartilhar → Copiar link no vídeo ou Reel."
+            return
+        }
+        val link = parsed.url
+        source = link
         analyzing = true
         error = ""
         analysis = null
@@ -228,7 +233,13 @@ private fun SnapFlowApp(activity: MainActivity) {
                     withTimeout(65_000L) { MediaEngine.analyze(context, link) }
                 }
             } catch (ex: Exception) {
-                error = "Não foi possível analisar este endereço. " + (ex.message ?: "Fonte indisponível").take(150)
+                val raw = ex.message.orEmpty()
+                error = if (raw.contains("403", true) || raw.contains("forbidden", true)) {
+                    "O site recusou o acesso (403). Se o vídeo for privado, exigir login ou bloqueado pela plataforma, o SnapFlow não conseguirá baixá-lo."
+                } else {
+                    "Não foi possível analisar o link de ${parsed.platform.label}. " +
+                        raw.take(110).ifBlank { "Tente atualizar o motor em Downloads." }
+                }
             } finally {
                 analyzing = false
             }
@@ -248,11 +259,15 @@ private fun SnapFlowApp(activity: MainActivity) {
     }
     fun addExtract() {
         val info = analysis ?: return
+        val validated = SocialLinks.find(source) ?: run {
+            helper("O endereço do vídeo não é válido")
+            return
+        }
         try {
             if (info.direct && !audio) {
                 addDirect(source.trim(), info.title)
             } else {
-                val job = JobStore.create(context, source.trim(), info.title, quality, audio)
+                val job = JobStore.create(context, validated.url, info.title, quality, audio)
                 checkPermission()
                 DownloadService.enqueue(context, job.id)
                 jobs = JobStore.all(context)
@@ -347,7 +362,7 @@ private fun SnapFlowApp(activity: MainActivity) {
                         Text("SnapFlow", fontSize = 23.sp, fontWeight = FontWeight.ExtraBold, color = Light)
                         Text("Vídeos e áudio, sem complicação", fontSize = 11.sp, color = Muted)
                     }
-                    Text("v3.2", fontSize = 11.sp, color = Muted)
+                    Text("v3.3", fontSize = 11.sp, color = Muted)
                 }
                 when (tab) {
                     0 -> HomeScreen(
@@ -361,7 +376,7 @@ private fun SnapFlowApp(activity: MainActivity) {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             val content = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
                             if (content.isNotBlank()) {
-                                source = Regex("https://[^\\s]+").find(content)?.value ?: content.trim()
+                                source = SocialLinks.find(content)?.url ?: content.trim()
                                 analysis = null
                                 error = ""
                             } else helper("A área de transferência está vazia")
@@ -476,7 +491,7 @@ private fun HomeScreen(
                     Text("Seu vídeo, no seu celular.", color = Light,
                         fontSize = 28.sp, lineHeight = 33.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.height(7.dp))
-                    Text("Cole o endereço, escolha o formato e acompanhe o download.",
+                    Text("YouTube, TikTok, Facebook e Instagram: cole ou compartilhe um link de vídeo.",
                         color = Muted, fontSize = 14.sp, lineHeight = 20.sp)
                     Spacer(Modifier.height(18.dp))
                     OutlinedTextField(
@@ -484,7 +499,7 @@ private fun HomeScreen(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
                         singleLine = true,
-                        placeholder = { Text("Cole o link do vídeo...", color = Muted, fontSize = 14.sp) },
+                        placeholder = { Text("Link de vídeo, Reel ou Shorts...", color = Muted, fontSize = 14.sp) },
                         leadingIcon = { Text("🔗", fontSize = 18.sp) },
                         trailingIcon = { TextButton(onClick = onPaste) { Text("COLAR", fontWeight = FontWeight.Bold, fontSize = 12.sp) } },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
@@ -554,6 +569,13 @@ private fun HomeScreen(
             }
         }
         item {
+            Text("COMPATIBILIDADE DE LINKS", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text("YouTube  •  TikTok  •  Facebook  •  Instagram", color = Light,
+                fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text("Vídeos e Reels públicos, quando a origem permite o download.",
+                color = Muted, fontSize = 11.sp)
+            Spacer(Modifier.height(18.dp))
             Text("ACESSOS RÁPIDOS", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

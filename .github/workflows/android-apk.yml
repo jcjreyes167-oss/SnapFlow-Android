@@ -25,11 +25,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Compilar APK v3.2
+      - name: Testar leitura e validação de URLs
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Compilar APK v3.3
         run: gradle --no-daemon :app:assembleDebug --stacktrace
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: SnapFlow-v3.2-APK
+          name: SnapFlow-v3.3-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

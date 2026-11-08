@@ -262,6 +262,8 @@ class DownloadService : Service() {
                         "A origem limitou as solicitações (HTTP 429). Aguarde e tente novamente mais tarde."
                     "404" in lower || "not found" in lower ->
                         "Arquivo indisponível na origem (HTTP 404)."
+                    "private" in lower || "permission" in lower || "not available" in lower ->
+                        "A publicação pode ser privada ou indisponível. Confira se é um link público de vídeo, Reel ou Shorts."
                     "sign in" in lower || "login" in lower || "authentication" in lower ->
                         "A origem exige autenticação ou autorização. O SnapFlow não ignora essa restrição."
                     else -> details.take(180).ifBlank { "Falha de rede ou formato incompatível." }

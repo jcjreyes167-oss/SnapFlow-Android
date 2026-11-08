@@ -10,8 +10,8 @@ android {
         applicationId = "com.snapflow.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 6
-        versionName = "3.2"
+        versionCode = 7
+        versionName = "3.3"
         ndk {
             if (project.hasProperty("emulatorTest")) {
                 abiFilters += "x86_64"
@@ -43,6 +43,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
