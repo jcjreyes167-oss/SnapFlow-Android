@@ -54,7 +54,7 @@ class MainActivity : Activity() {
         window.navigationBarColor = background
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(background)
+            setBackgroundColor(this@MainActivity.background)
         }
         setContentView(root)
         root.addView(TextView(this).apply {
