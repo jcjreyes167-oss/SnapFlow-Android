@@ -1,0 +1,64 @@
+name: Testar abertura do SnapFlow
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/android-smoke.yml
+      - app/src/androidTest/**
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Liberar aceleração KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Preparar Android SDK 35
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+      - name: Testar em emulador Android 14
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            gradle --no-daemon -PemulatorTest=true :app:connectedDebugAndroidTest --stacktrace
+            adb shell am start -W -n com.snapflow.app/.MainActivity
+            sleep 8
+            adb exec-out screencap -p > snapflow-home.png
+            adb logcat -d -b crash > android-crashes.txt
+            if grep -E -q 'FATAL EXCEPTION|com.snapflow.app.*Process' android-crashes.txt; then
+              echo 'Crash do app identificado no emulador'
+              exit 1
+            fi
+      - name: Salvar captura e relatórios
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnapFlow-Android-SmokeTest
+          path: |
+            snapflow-home.png
+            android-crashes.txt
+            app/build/outputs/androidTest-results/**
+          if-no-files-found: warn
