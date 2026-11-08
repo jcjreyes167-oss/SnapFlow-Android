@@ -85,6 +85,7 @@ class MainActivity : ComponentActivity() {
 
 private data class FoundMedia(val url: String, val label: String)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SnapFlowApp(activity: MainActivity) {
     val context = LocalContext.current
