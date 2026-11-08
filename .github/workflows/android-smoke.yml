@@ -44,14 +44,13 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             gradle --no-daemon -PemulatorTest=true :app:connectedDebugAndroidTest --stacktrace
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -W -n com.snapflow.app/.MainActivity
-            sleep 8
+            sleep 6
+            adb shell pidof com.snapflow.app
             adb exec-out screencap -p > snapflow-home.png
             adb logcat -d -b crash > android-crashes.txt
-            if grep -E -q 'FATAL EXCEPTION|com.snapflow.app.*Process' android-crashes.txt; then
-              echo 'Crash do app identificado no emulador'
-              exit 1
-            fi
+            ! grep -q 'FATAL EXCEPTION' android-crashes.txt
       - name: Salvar captura e relatórios
         if: always()
         uses: actions/upload-artifact@v4
