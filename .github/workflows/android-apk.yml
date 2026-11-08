@@ -14,18 +14,21 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Usar Android SDK do runner
+      - name: Configurar Android SDK disponível no runner
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          sdkmanager --version
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -x "$SDKMANAGER"
+          echo "sdkmanager=$SDKMANAGER"
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
       - name: Compilar APK debug
         run: gradle --no-daemon :app:assembleDebug --stacktrace
-      - name: Publicar APK instalável
+      - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
           name: SnapFlow-v2.1-APK
