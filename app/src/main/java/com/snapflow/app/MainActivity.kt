@@ -153,6 +153,7 @@ private fun SnapFlowApp(activity: MainActivity) {
                     }
                 }
             }
+            loadUrl("https://www.google.com")
         }
     }
     DisposableEffect(web) {
