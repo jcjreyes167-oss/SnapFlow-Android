@@ -10,8 +10,8 @@ android {
         applicationId = "com.snapflow.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "3.0"
+        versionCode = 5
+        versionName = "3.1"
         ndk {
             if (project.hasProperty("emulatorTest")) {
                 abiFilters += "x86_64"
