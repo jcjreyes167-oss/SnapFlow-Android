@@ -120,6 +120,7 @@ private fun SnapFlowApp(activity: MainActivity) {
     var sheet by remember { mutableStateOf(false) }
     val detected = remember { mutableStateListOf<FoundMedia>() }
     var jobs by remember { mutableStateOf(JobStore.all(context)) }
+    var updatingEngine by remember { mutableStateOf(false) }
     val helper: (String) -> Unit = { msg -> scope.launch { snackbar.showSnackbar(msg) } }
     val addMedia: (String, String) -> Unit = { url, title ->
         if (url.startsWith("https://", true) && detected.none { it.url == url } && detected.size < 50) {
@@ -262,6 +263,34 @@ private fun SnapFlowApp(activity: MainActivity) {
             helper("Erro ao iniciar: " + (ex.message ?: "Indisponível"))
         }
     }
+    fun retryDownload(job: DownloadJob) {
+        try {
+            if (job.kind == "direct") {
+                JobStore.addDirect(context, job.url, job.title)
+            } else {
+                val created = JobStore.create(context, job.url, job.title, job.quality, job.mode == "audio")
+                checkPermission()
+                DownloadService.enqueue(context, created.id)
+            }
+            JobStore.remove(context, job.id)
+            jobs = JobStore.all(context)
+            helper("Nova tentativa iniciada")
+        } catch (ex: Exception) {
+            helper("Não foi possível tentar novamente: " + ex.message.orEmpty().take(90))
+        }
+    }
+    fun updateExtractor() {
+        if (updatingEngine) return
+        updatingEngine = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try { MediaEngine.updateEngine(context) }
+                catch (ex: Exception) { "Não foi possível atualizar o motor: " + ex.message.orEmpty().take(100) }
+            }
+            updatingEngine = false
+            helper(result)
+        }
+    }
     fun goBrowser(text: String) {
         val query = text.trim()
         val resolved = if (query.startsWith("http://") || query.startsWith("https://")) query
@@ -318,7 +347,7 @@ private fun SnapFlowApp(activity: MainActivity) {
                         Text("SnapFlow", fontSize = 23.sp, fontWeight = FontWeight.ExtraBold, color = Light)
                         Text("Vídeos e áudio, sem complicação", fontSize = 11.sp, color = Muted)
                     }
-                    Text("v3.1", fontSize = 11.sp, color = Muted)
+                    Text("v3.2", fontSize = 11.sp, color = Muted)
                 }
                 when (tab) {
                     0 -> HomeScreen(
@@ -360,7 +389,10 @@ private fun SnapFlowApp(activity: MainActivity) {
                         onAnalyze = { source = web.url.orEmpty(); tab = 0; analyzeUrl(source) },
                         detectedCount = detected.size, onSources = { sheet = true }
                     )
-                    else -> DownloadsScreen(jobs = jobs, onOpen = { job ->
+                    else -> DownloadsScreen(jobs = jobs, engineUpdating = updatingEngine,
+                        onEngineUpdate = { updateExtractor() },
+                        onRetry = { job -> retryDownload(job) },
+                        onOpen = { job ->
                         try {
                             val uri = Uri.parse(job.uri)
                             val mime = context.contentResolver.getType(uri) ?:
@@ -489,7 +521,7 @@ private fun HomeScreen(
                         )
                         Spacer(Modifier.height(12.dp))
                     }
-                    Text("PRONTO PARA BAIXAR", color = Good, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("MÍDIA IDENTIFICADA", color = Good, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
                     Text(analysis.title, fontSize = 19.sp, fontWeight = FontWeight.Bold, maxLines = 3)
                     Text(analysis.subtitle, color = Muted, fontSize = 12.sp)
@@ -598,75 +630,140 @@ private fun BrowserScreen(
 @Composable
 private fun DownloadsScreen(
     jobs: List<DownloadJob>,
+    engineUpdating: Boolean,
+    onEngineUpdate: () -> Unit,
+    onRetry: (DownloadJob) -> Unit,
     onOpen: (DownloadJob) -> Unit,
     onCancel: (DownloadJob) -> Unit,
     onClear: (DownloadJob) -> Unit,
     onSystemDownloads: () -> Unit
 ) {
+    val active = jobs.count { it.status in listOf("Baixando", "Preparando", "Na fila", "Pausado pelo Android") }
+    val failed = jobs.count { it.status == "Falhou" }
+    val completed = jobs.count { it.status == "Concluído" }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text("Meus downloads", color = Light, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
-            Text("Seus arquivos ficam em Downloads/SnapFlow", color = Muted, fontSize = 13.sp)
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onSystemDownloads, shape = RoundedCornerShape(12.dp)) {
-                Text("Abrir pasta de downloads ↗")
+            Text("Downloads", color = Light, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.height(4.dp))
+            Text("$active em andamento  •  $completed concluídos  •  $failed falharam", color = Muted, fontSize = 12.sp)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(
+                    onClick = onEngineUpdate,
+                    enabled = !engineUpdating && active == 0,
+                    shape = RoundedCornerShape(13.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Ink)
+                ) {
+                    if (engineUpdating) {
+                        CircularProgressIndicator(Modifier.size(17.dp), color = Ink, strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(if (engineUpdating) "Atualizando..." else "↻ Atualizar motor", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(onClick = onSystemDownloads, shape = RoundedCornerShape(13.dp)) {
+                    Text("Abrir pasta", fontSize = 12.sp)
+                }
             }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "O download depende da permissão do site. A atualização do motor pode melhorar a compatibilidade, mas não libera conteúdo bloqueado.",
+                color = Muted, fontSize = 11.sp, lineHeight = 16.sp
+            )
         }
         if (jobs.isEmpty()) {
             item {
-                Column(Modifier.fillMaxWidth().padding(top = 65.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("⇩", fontSize = 58.sp, color = Accent)
-                    Text("Nada por aqui ainda", fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                    Spacer(Modifier.height(7.dp))
-                    Text("Analise um link na tela inicial para começar.", fontSize = 13.sp, color = Muted)
+                Column(
+                    Modifier.fillMaxWidth().padding(vertical = 55.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("⇩", fontSize = 46.sp, color = Accent)
+                    Text("Nenhum download ainda", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Cole um link na tela Início para começar.", fontSize = 12.sp, color = Muted)
                 }
             }
         }
         items(jobs, key = { it.id }) { job ->
-            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = CardColor)) {
-                Column(Modifier.padding(15.dp)) {
+            val running = job.status in listOf("Baixando", "Preparando", "Na fila", "Pausado pelo Android")
+            val failure = job.status == "Falhou"
+            Card(
+                shape = RoundedCornerShape(17.dp),
+                colors = CardDefaults.cardColors(containerColor = CardColor)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(13.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(CardRaised),
-                            contentAlignment = Alignment.Center) {
-                            Text(if (job.mode == "audio") "♫" else "▶", color = Accent, fontSize = 23.sp)
+                        Box(
+                            Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(CardRaised),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(if (job.mode == "audio") "♫" else "▶", color = Accent, fontSize = 22.sp)
                         }
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(job.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                (if (job.mode == "audio") "MP3" else if (job.quality == "auto") "Melhor qualidade" else job.quality + "p") + "  •  " + job.status,
-                                color = if (job.status == "Concluído") Good else Muted, fontSize = 11.sp
-                            )
+                            Text(job.title, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
+                            Spacer(Modifier.height(3.dp))
+                            val format = if (job.mode == "audio") "MP3" else if (job.quality == "auto") "Vídeo" else job.quality + "p"
+                            Text("$format  •  ${job.status}", color = if (failure) Color(0xFFFFA3A5) else if (job.status == "Concluído") Good else Muted,
+                                fontSize = 12.sp)
                         }
-                        Text("${job.progress}%", color = if (job.status == "Concluído") Good else Accent, fontSize = 13.sp)
+                        if (running || job.status == "Concluído") {
+                            Text("${job.progress}%", color = if (running) Accent else Good, fontSize = 12.sp)
+                        }
                     }
-                    Spacer(Modifier.height(12.dp))
-                    LinearProgressIndicator(progress = { job.progress / 100f },
-                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
-                        color = if (job.status == "Concluído") Good else Accent, trackColor = CardRaised)
-                    if (job.error.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(job.error.take(160), color = Color(0xFFFF9FA7), fontSize = 11.sp)
+                    if (running) {
+                        Spacer(Modifier.height(10.dp))
+                        LinearProgressIndicator(
+                            progress = { (job.progress / 100f).coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
+                            color = Accent, trackColor = CardRaised
+                        )
+                    }
+                    if (failure) {
+                        Spacer(Modifier.height(10.dp))
+                        Surface(
+                            color = Color(0xFF3B2932), shape = RoundedCornerShape(11.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(10.dp)) {
+                                Text("Falha ao baixar", color = Color(0xFFFFB6BA),
+                                    fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                                Spacer(Modifier.height(3.dp))
+                                Text(job.error.ifBlank { "A origem não concluiu a transferência." },
+                                    fontSize = 12.sp, lineHeight = 16.sp, color = Color(0xFFFFD3D5))
+                            }
+                        }
                     }
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         if (job.status == "Concluído" && job.uri.isNotBlank()) {
-                            Button(onClick = { onOpen(job) },
-                                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Ink)) { Text("Abrir") }
-                        } else if (job.status !in listOf("Cancelado", "Falhou", "Concluído")) {
-                            OutlinedButton(onClick = { onCancel(job) }) { Text("Cancelar") }
+                            Button(onClick = { onOpen(job) }, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 5.dp)) {
+                                Text("Abrir", fontSize = 12.sp)
+                            }
+                        }
+                        if (failure) {
+                            Button(onClick = { onRetry(job) },
+                                enabled = !engineUpdating,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 5.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Ink)) {
+                                Text("↻ Tentar de novo", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        } else if (running) {
+                            TextButton(onClick = { onCancel(job) }) { Text("Cancelar", fontSize = 12.sp) }
                         }
                         if (job.status in listOf("Cancelado", "Falhou", "Concluído")) {
-                            TextButton(onClick = { onClear(job) }) { Text("Retirar da lista") }
+                            TextButton(onClick = { onClear(job) }) { Text("Remover", fontSize = 12.sp) }
                         }
                     }
                 }
             }
         }
-        item { Spacer(Modifier.height(12.dp)) }
+        item { Spacer(Modifier.height(8.dp)) }
     }
 }

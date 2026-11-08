@@ -1,4 +1,4 @@
-# SnapFlow Android 3.0
+# SnapFlow Android 3.2
 
 Aplicativo Android em Kotlin/Jetpack Compose para arquivos de mídia autorizados.
 
@@ -20,3 +20,9 @@ Sem contorno de DRM, login pago ou conteúdo restrito. Sites podem deixar de fun
 
 ## Licença
 GPL-3.0, consulte LICENSE e THIRD_PARTY_NOTICES.md.
+
+## Versão 3.2
+- Atualização do motor yt-dlp oficial sob demanda e checagem diária ao analisar links.
+- Mensagens claras para HTTP 403, 404 e 429; nova tentativa para downloads que falharam.
+- Tela Downloads simplificada: menos espaço em branco, progresso apenas quando há transferência.
+- Atualização do motor não libera arquivos bloqueados pelo provedor; respeitar termos e direitos.

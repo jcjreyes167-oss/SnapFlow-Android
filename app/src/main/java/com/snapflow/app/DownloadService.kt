@@ -33,6 +33,40 @@ object MediaEngine {
         initialized = true
     }
 
+    /**
+     * Atualiza o extrator yt-dlp por meio do canal estável oficial.
+     * Não tenta contornar bloqueios de acesso ou conteúdos protegidos.
+     * Chamar somente em thread de trabalho, sem download ativo.
+     */
+    @Synchronized
+    fun updateEngine(context: Context): String {
+        ensure(context)
+        val previous = YoutubeDL.versionName(context).orEmpty()
+        val result = YoutubeDL.updateYoutubeDL(context.applicationContext, YoutubeDL.UpdateChannel.STABLE)
+        val current = YoutubeDL.versionName(context).orEmpty()
+        context.getSharedPreferences("snapflow_engine", Context.MODE_PRIVATE)
+            .edit().putLong("last_check", System.currentTimeMillis()).apply()
+        return if (result == YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE) {
+            "Motor de mídia atualizado" + if (current.isNotEmpty()) " • $current" else ""
+        } else {
+            "Motor de mídia atualizado" + if (current.isNotEmpty()) " • $current" else ""
+        }
+    }
+
+    private fun refreshIfNeeded(context: Context) {
+        val prefs = context.getSharedPreferences("snapflow_engine", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val last = prefs.getLong("last_check", 0L)
+        if (now - last < 24L * 60L * 60L * 1000L) return
+        if (JobStore.all(context).any { it.status in listOf("Preparando", "Baixando") }) return
+        try {
+            updateEngine(context)
+        } catch (_: Exception) {
+            // A falta de rede não deve impedir o uso do extrator já instalado.
+            prefs.edit().putLong("last_check", now).apply()
+        }
+    }
+
     fun analyze(context: Context, url: String): Analysis {
         require(url.startsWith("https://", true)) { "Cole um endereço HTTPS válido" }
         if (isDirect(url)) {
@@ -40,6 +74,7 @@ object MediaEngine {
             return Analysis(name, "Arquivo direto • Sem extração", "", emptyList(), true)
         }
         ensure(context)
+        refreshIfNeeded(context)
         val request = YoutubeDLRequest(url)
             .addOption("--no-playlist")
             .addOption("--no-warnings")
@@ -218,9 +253,21 @@ class DownloadService : Service() {
             }
         } catch (e: Exception) {
             if (JobStore.get(this, id)?.status != "Cancelado") {
-                val error = e.message.orEmpty().take(240).ifBlank { "Falha de extração ou conexão" }
-                JobStore.change(this, id, status = "Falhou", error = error)
-                notifyStatus("Falha no download. Verifique o link.")
+                val details = e.message.orEmpty()
+                val lower = details.lowercase()
+                val error = when {
+                    "403" in lower || "forbidden" in lower ->
+                        "HTTP 403: a origem recusou o arquivo. Atualize o motor e tente novamente. Se persistir, este arquivo não está disponível para download por esta fonte."
+                    "429" in lower || "too many requests" in lower ->
+                        "A origem limitou as solicitações (HTTP 429). Aguarde e tente novamente mais tarde."
+                    "404" in lower || "not found" in lower ->
+                        "Arquivo indisponível na origem (HTTP 404)."
+                    "sign in" in lower || "login" in lower || "authentication" in lower ->
+                        "A origem exige autenticação ou autorização. O SnapFlow não ignora essa restrição."
+                    else -> details.take(180).ifBlank { "Falha de rede ou formato incompatível." }
+                }
+                JobStore.change(this, id, status = "Falhou", progress = 0, error = error)
+                notifyStatus(if ("403" in lower) "A origem recusou o arquivo (403)" else "Download não concluído. Consulte os detalhes.")
             }
         } finally {
             if (active.decrementAndGet() <= 0) {
