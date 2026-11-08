@@ -14,13 +14,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Instalar Android SDK
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Usar Android SDK do runner
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          sdkmanager --version
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Compilar APK de depuração
+      - name: Compilar APK debug
         run: gradle --no-daemon :app:assembleDebug --stacktrace
       - name: Publicar APK instalável
         uses: actions/upload-artifact@v4
